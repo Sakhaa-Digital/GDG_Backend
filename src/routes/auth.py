@@ -17,20 +17,57 @@ class GoogleAuthRequest(BaseModel):
 # -----------------------------
 # 5️⃣ Google Auth endpoint
 # -----------------------------
+# @router.post("/googleauth")
+# async def google_auth(data: GoogleAuthRequest):
+#     try:
+#         # ✅ Verify Firebase token
+#         decoded = auth.verify_id_token(data.token)
+#         uid = decoded.get("uid")
+#         email = decoded.get("email")
+#         name = decoded.get("name")
+#         picture = decoded.get("picture")
+
+#         # 🔍 Check if user exists
+#         user =await users_collection.find_one({"uid": uid})
+#         if user:
+#             return {"success": True, "message": f"Welcome {name}", "user": user}
+
+#         # ➕ Create new user
+#         new_user = {
+#             "uid": uid,
+#             "name": name,
+#             "email": email,
+#             "picture": picture,
+#             "provider": "google",
+#             "role":"admin"
+#         }
+#         users_collection.insert_one(new_user)
+
+#         return {"success": True, "user": new_user}
+
+#     except Exception as e:
+#         print(e)
+#         raise HTTPException(status_code=401, detail="Invalid or expired token")
 @router.post("/googleauth")
 async def google_auth(data: GoogleAuthRequest):
     try:
-        # ✅ Verify Firebase token
         decoded = auth.verify_id_token(data.token)
+
         uid = decoded.get("uid")
         email = decoded.get("email")
         name = decoded.get("name")
         picture = decoded.get("picture")
 
         # 🔍 Check if user exists
-        user =await users_collection.find_one({"uid": uid})
+        user = await users_collection.find_one({"uid": uid})
+
         if user:
-            return {"success": True, "message": f"Welcome {name}", "user": user}
+            user["_id"] = str(user["_id"])   # ✅ FIX
+            return {
+                "success": True,
+                "message": f"Welcome {name}",
+                "user": user
+            }
 
         # ➕ Create new user
         new_user = {
@@ -39,11 +76,17 @@ async def google_auth(data: GoogleAuthRequest):
             "email": email,
             "picture": picture,
             "provider": "google",
-            "role":"admin"
+            "role": "admin"
         }
-        users_collection.insert_one(new_user)
 
-        return {"success": True, "user": new_user}
+        result = await users_collection.insert_one(new_user)
+
+        new_user["_id"] = str(result.inserted_id)   # ✅ FIX
+
+        return {
+            "success": True,
+            "user": new_user
+        }
 
     except Exception as e:
         print(e)

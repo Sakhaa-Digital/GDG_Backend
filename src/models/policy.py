@@ -10,6 +10,7 @@ class Policy(BaseModel):
     source_type:str #pdf,docs
     active:bool=True
     created_at:datetime=datetime.now()
+    original_filename:str
     embedding: Optional[List[float]] = None
 
     

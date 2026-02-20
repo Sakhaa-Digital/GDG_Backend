@@ -5,6 +5,7 @@ from src.services.extraction import extract_rules, extract_text, generate_embedd
 from src.models.policy import Policy
 from src.utils.cloudinary_config import cloudinary
 from bson import ObjectId
+from typing import Optional
 
 router = APIRouter()
 
@@ -43,8 +44,8 @@ router = APIRouter()
 async def upload_policy(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    admin_id: str = "admin123"
-):
+    admin_id:  Optional[str] = None,
+    policyName: Optional[str] = None):
     temp_path = f"temp_{file.filename}"
 
     # Save the uploaded file temporarily
@@ -52,15 +53,16 @@ async def upload_policy(
         f.write(await file.read())
 
     # Upload to cloud (your existing function)
-    result = cloud_upload(temp_path, folder="policies")
+    result = cloud_upload(temp_path, folder="policies", resource_type="raw")
     cloud_url = result.get("secure_url")
-
+    final_name = policyName if policyName else file.filename
     # Insert document in MongoDB
     policy_doc = Policy(
-        name=file.filename,
+        name=final_name,
         uploaded_by=admin_id,
         file_path=cloud_url,
         source_type=file.content_type,
+        original_filename=file.filename,
         active=True
     )
     policy_insert = await policies_collection.insert_one(policy_doc.dict())

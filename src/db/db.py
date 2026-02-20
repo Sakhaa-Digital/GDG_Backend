@@ -15,3 +15,6 @@ policies_collection = db["policies"]          # now you can do await policies_co
 rules_collection = db["rules"]              # for storing extracted rules
 policy_chunks_collection=db['policy_chunks']
 users_collection=db['user']
+datasets_collection=db['dataset']
+scans_collection=db['scan']
+violations_collection=db['violation']

@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from src.routes.policies import router as policies_router
 from src.routes.auth import router as auth_router
+from src.routes.datasets import router as dataset_router
+from src.routes.scan import router as scan_router
+from src.routes.violation import router as violation_router
 import os
 import json
 import firebase_admin
@@ -23,7 +26,11 @@ app.add_middleware(
 )
 app.include_router(policies_router, prefix="/policies", tags=["Policies"])
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
+app.include_router(dataset_router, prefix="/dataset", tags=["Dataset"])
+app.include_router(scan_router, prefix="/scan", tags=["scan_router"])
+app.include_router(violation_router, prefix="/violation", tags=["violation_router"])
 
+    
 @app.get("/")
 def hello():
     return {"Hello": "World"}
