@@ -51,27 +51,30 @@ def chunk_text(text: str, chunk_size=1200, overlap=150):
     return chunks
 
 async def extract_rules(text: str) -> List[Dict]:
-    """
-    Use LLM to extract structured compliance rules from policy text.
-    Returns list of structured rules.
-    """
-
     prompt = f"""
-You are a compliance rule extraction engine.
+You are a compliance rule extraction engine for a data scanning system.
 
-From the policy text below:
+From the policy text below, extract enforceable rules that can be checked against a database/CSV.
 
-1. Extract only clear, enforceable compliance rules.
-2. Ignore headers, single words, broken lines, or incomplete fragments.
-3. For each rule, return:
-   - rule_text (original sentence)
-   - field (database-like field name in snake_case if identifiable, else null)
-   - operator (>, <, >=, <=, =, contains, etc if identifiable, else null)
-   - value (numeric value if present, else null)
-   - severity (low, medium, high based on impact)
+For each rule return:
+- rule_text: the original sentence
+- field: a short snake_case semantic concept name for the data field 
+  (e.g. "client_expense", "transaction_amount", "quantity", "account_balance")
+  Make this a GENERIC CONCEPT, not tied to any specific column name.
+- operator: one of >, <, >=, <=, =, !=, contains, not_contains, is_empty, is_not_empty
+- value: the threshold/value (numeric or string), or null
+- severity: low, medium, or high
+- rule_type: "numeric_threshold" | "string_check" | "null_check" | "process_rule"
+- checkable: true if this rule can be checked against data columns, false if it's a process/workflow rule
 
-Return ONLY valid JSON array.
-Do not add explanation.
+IMPORTANT: 
+- "must not exceed X" → operator: ">", value: X
+- "must be at least X" → operator: ">=", value: X  
+- "must not be 0" or "must not be empty" → operator: "=", value: 0 (or is_empty)
+- "client expense", "spending", "total cost" → field: "client_expense"
+- Only return rules where checkable is true
+
+Return ONLY valid JSON array. No explanation.
 
 Policy Text:
 {text}
@@ -80,37 +83,28 @@ Policy Text:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You extract structured compliance rules."},
+            {"role": "system", "content": "You extract structured compliance rules checkable against tabular data."},
             {"role": "user", "content": prompt}
         ],
         temperature=0
     )
 
     content = response.choices[0].message.content.strip()
-
-# Remove markdown code fences
     if content.startswith("```"):
         content = content.split("```")[1]
-
-# Remove possible 'json' label
     if content.startswith("json"):
         content = content[4:].strip()
 
-# Extract JSON safely
     match = re.search(r'\[.*\]', content, re.DOTALL)
-
     if match:
-        json_str = match.group(0)
-        rules = json.loads(json_str)
+        rules = json.loads(match.group(0))
+        # Only keep checkable rules
+        rules = [r for r in rules if r.get("checkable", True)]
     else:
         print("Failed to parse LLM JSON:", content)
         rules = []
 
-
-    
-
     return rules
-
 # async def process_policy(temp_path: str, policy_id):
 
 #     text = await extract_text(temp_path)

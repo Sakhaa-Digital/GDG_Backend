@@ -2,7 +2,7 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from bson import ObjectId
 from datetime import datetime
-from src.db.db import datasets_collection, policies_collection, scans_collection
+from src.db.db import datasets_collection, policies_collection, scans_collection,rules_collection
 from src.models.scan import Scan
 from src.services.scan_service import process_scan  # background task
 from src.schemas.scan_schemas import ScanRequest,MultiScanRequest
@@ -119,3 +119,63 @@ async def get_scan_status():
         })
 
     return {"active_scans": results}
+
+@router.post("/preview-mapping")
+async def preview_column_mapping(scan_request: ScanRequest):
+    """
+    Preview how rule fields will map to CSV columns
+    before running the actual scan. Useful for validation.
+    """
+    import httpx
+    import csv
+    import io
+    from src.services.column_matcher import match_columns_to_fields
+
+    dataset = await datasets_collection.find_one({"_id": ObjectId(scan_request.dataset_id)})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    # Download CSV and read headers only
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(dataset["file_url"])
+
+    content = response.content.decode("utf-8")
+    reader = csv.DictReader(io.StringIO(content))
+    csv_columns = reader.fieldnames or []
+
+    # Get all active rules
+    policies = await policies_collection.find({"active": True}).to_list(length=None)
+    policy_ids = [p["_id"] for p in policies]
+    rules = await rules_collection.find({
+        "policy_id": {"$in": policy_ids},
+        "active": True
+    }).to_list(length=None)
+
+    # Collect all rule fields
+    all_fields = set()
+    for rule in rules:
+        for condition in (rule.get("conditions") or []):
+            if condition.get("field"):
+                all_fields.add(condition["field"])
+
+    # Run semantic matching
+    mapping = await match_columns_to_fields(csv_columns, list(all_fields))
+
+    # Build human-readable preview
+    preview = []
+    for field in all_fields:
+        matched_col = mapping.get(field)
+        preview.append({
+            "rule_field": field,
+            "matched_csv_column": matched_col,
+            "status": "matched" if matched_col else "no_match",
+            "warning": None if matched_col else f"No CSV column found for '{field}' — violations for rules using this field will be skipped"
+        })
+
+    return {
+        "dataset_name": dataset.get("name"),
+        "csv_columns": csv_columns,
+        "total_rules": len(rules),
+        "field_mappings": preview,
+        "unmatched_fields": [p["rule_field"] for p in preview if p["status"] == "no_match"]
+    }
